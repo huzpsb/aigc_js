@@ -33,7 +33,7 @@
             background: var(--card-bg);
             padding: 2rem;
             border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
 
         header {
@@ -52,6 +52,31 @@
             color: #7f8c8d;
             margin-top: 0.5rem;
             line-height: 1.4;
+        }
+
+        .additional-disclaimer {
+            font-size: 0.8rem;
+            color: #999;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid var(--warning-color);
+        }
+
+        .github-link {
+            text-align: center;
+            margin-top: 1rem;
+        }
+
+        .github-link a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .github-link a:hover {
+            text-decoration: underline;
         }
 
         textarea {
@@ -140,8 +165,13 @@
         }
 
         @media (max-width: 480px) {
-            .container { padding: 1rem; }
-            h1 { font-size: 1.4rem; }
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.4rem;
+            }
         }
     </style>
 </head>
@@ -151,13 +181,19 @@
     <header>
         <h1>AI 文本特征检测</h1>
         <p class="disclaimer">
-            基于本地模型分析。输入 200 字以上中文效果最佳。<br>
-            结果仅供参考，不代表绝对真实性。
+            基于本地模型分析。输入 200 字以上中文效果最佳。
         </p>
+        <div class="additional-disclaimer">
+            <strong>重要：</strong>
+            本工具仅用于辅助检测文本中可能存在的AI生成特征，不作为内容真伪与版权归属的最终判定依据。检测结果受模型算法与输入文本质量、风格等多因素影响，存在误判或漏判的可能。请用户与评审方将结果作为参考信息，结合人工判断与其他证据综合评估，切勿单独以本工具结论作为决定性依据。因将本工具结果用于审查、封禁、降权、仲裁等行为所引发的后果与纠纷，由使用方自行承担；本工具及其提供方不对由此造成的任何直接或间接损失承担责任。使用即表示您已阅读并同意以上条款。
+        </div>
+        <div class="github-link">
+            <a href="https://github.com/huzpsb/aigc_js/" target="_blank">Github</a>
+        </div>
     </header>
 
     <textarea id="inputText" placeholder="在这里粘贴你想要检测的文本..."></textarea>
-    
+
     <div class="controls">
         <div class="stats">
             当前字数: <span id="charCount">0</span>
@@ -192,25 +228,17 @@
 
     function handleDetect() {
         const text = textarea.value.trim();
-        
         if (!text) {
-            alert("请输入一些文本再进行分析。");
+            alert("请输入一些文本再进行分析");
             return;
         }
-
-        // 如果 predict 函数未定义（infer.js 加载失败）
         if (typeof predict !== 'function') {
-            alert("模型未就绪，请检查 infer.js 是否在同一目录下。");
+            alert("模型未就绪");
             return;
         }
-
-        // 显示结果区域
         resultArea.style.display = 'block';
-
-        // 执行预测 (由于是计算密集型，如果文本极长可能会阻塞 UI 线程)
-        // 使用 setTimeout 让进度条有重置的效果
         setTimeout(() => {
-            const score = predict(text); // 这里调用你生成的 infer.js 中的函数
+            const score = predict(text);
             updateUI(score);
         }, 100);
     }
@@ -219,31 +247,23 @@
         const percentage = (score * 100).toFixed(1);
         scoreText.innerText = percentage + "%";
         gaugeFill.style.width = percentage + "%";
-
-        // 根据分值改变颜色和评价
-        // 0-0.3: 极大概率是 AI
-        // 0.3-0.7: 疑似 AI/混合
-        // 0.7-1.0: 人类书写
         let color, verdict;
         if (score > 0.7) {
-            color = "#2ecc71"; // Success Green
+            color = "#2ecc71";
             verdict = "✨ 文本表现出强烈的人类书写特征。";
         } else if (score > 0.4) {
-            color = "#f1c40f"; // Warning Yellow
+            color = "#f1c40f";
             verdict = "🤔 文本特征模棱两可，建议人工复核。";
         } else {
-            color = "#e74c3c"; // Danger Red
+            color = "#e74c3c";
             verdict = "🤖 文本表现出明显的 AI 生成特征。";
         }
 
         gaugeFill.style.backgroundColor = color;
         verdictText.style.color = color;
         verdictText.innerText = verdict;
-
-        // 滚动到结果区
-        resultArea.scrollIntoView({ behavior: 'smooth' });
+        resultArea.scrollIntoView({behavior: 'smooth'});
     }
 </script>
-
 </body>
 </html>
