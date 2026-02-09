@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 文本检测器 - ONNX WASM</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --success-color: #2ecc71;
+            --warning-color: #f1c40f;
+            --danger-color: #e74c3c;
+            --bg-color: #f5f7fa;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 800px;
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            margin: 0;
+            color: var(--primary-color);
+            font-size: 1.8rem;
+        }
+
+        .disclaimer {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+            margin-top: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .additional-disclaimer {
+            font-size: 0.8rem;
+            color: #999;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid var(--warning-color);
+        }
+
+        .github-link {
+            text-align: center;
+            margin-top: 1rem;
+        }
+
+        .github-link a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .github-link a:hover {
+            text-decoration: underline;
+        }
+
+        textarea {
+            width: 100%;
+            height: 250px;
+            padding: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            resize: none;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        textarea:focus {
+            border-color: var(--primary-color);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+        }
+
+        .stats {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #result-area {
+            margin-top: 2rem;
+            display: none;
+            text-align: center;
+        }
+
+        .gauge-container {
+            width: 100%;
+            height: 24px;
+            background: #eee;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        #gauge-fill {
+            height: 100%;
+            width: 0%;
+            transition: width 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            background-color: var(--primary-color);
+        }
+
+        .score-label {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .verdict {
+            margin-top: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .loading-spinner {
+            display: none;
+            margin-left: 10px;
+        }
+
+        #status {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #999;
+            margin-top: 0.5rem;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>AI 文本特征检测</h1>
+        <p class="disclaimer">
+            基于本地模型分析（ONNX WASM 推理）。输入 200 字以上中文效果最佳。
+        </p>
+        <div class="additional-disclaimer">
+            <strong>重要：</strong>
+            本工具仅用于辅助检测文本中可能存在的AI生成特征，不作为内容真伪与版权归属的最终判定依据。检测结果受模型算法与输入文本质量、风格等多因素影响，存在误判或漏判的可能。请用户与评审方将结果作为参考信息，结合人工判断与其他证据综合评估，切勿单独以本工具结论作为决定性依据。因将本工具结果用于审查、封禁、降权、仲裁等行为所引发的后果与纠纷，由使用方自行承担；本工具及其提供方不对由此造成的任何直接或间接损失承担责任。使用即表示您已阅读并同意以上条款。
+        </div>
+        <div class="github-link">
+            <a href="https://github.com/huzpsb/aigc_js/" target="_blank">Github</a>
+        </div>
+    </header>
+
+    <textarea id="inputText" placeholder="在这里粘贴你想要检测的文本..."></textarea>
+
+    <div class="controls">
+        <div class="stats">
+            当前字数: <span id="charCount">0</span>
+        </div>
+        <button id="detectBtn" onclick="handleDetect()" disabled>
+            加载模型中...
+            <span id="loading" class="loading-spinner">...</span>
+        </button>
+    </div>
+    <div id="status">正在加载 ONNX 模型...</div>
+
+    <div id="result-area">
+        <div class="score-label">人类创作概率: <span id="scoreText">0%</span></div>
+        <div class="gauge-container">
+            <div id="gauge-fill"></div>
+        </div>
+        <div id="verdictText" class="verdict"></div>
+    </div>
+</div>
+
+<script>
+    const textarea = document.getElementById('inputText');
+    const charCount = document.getElementById('charCount');
+    const resultArea = document.getElementById('result-area');
+    const gaugeFill = document.getElementById('gauge-fill');
+    const scoreText = document.getElementById('scoreText');
+    const verdictText = document.getElementById('verdictText');
+    const detectBtn = document.getElementById('detectBtn');
+    const statusEl = document.getElementById('status');
+
+    textarea.addEventListener('input', () => {
+        charCount.innerText = textarea.value.length;
+    });
+
+    // Tokenizer
+    let TOKENS = null;
+    function getTokens(text) {
+        const ids = [];
+        for (let i = 0; i < text.length; i++) {
+            const c = text[i];
+            if (c >= "一" && c <= "龟") {
+                const idx = TOKENS.indexOf(c);
+                ids.push(idx === -1 ? 0 : idx + 1);
+            }
+        }
+        return ids;
+    }
+
+    // Load model
+    let session = null;
+    async function init() {
+        try {
+            const resp = await fetch('tokens.json');
+            const tokenArr = await resp.json();
+            TOKENS = tokenArr.join('');
+            session = await ort.InferenceSession.create('model.onnx', {
+                executionProviders: ['wasm']
+            });
+            detectBtn.disabled = false;
+            detectBtn.textContent = '开始分析';
+            statusEl.textContent = '模型已就绪';
+            setTimeout(() => statusEl.style.display = 'none', 1500);
+        } catch (e) {
+            statusEl.textContent = '模型加载失败: ' + e.message;
+        }
+    }
+    init();
+
+    async function handleDetect() {
+        const text = textarea.value.trim();
+        if (!text) { alert("请输入一些文本再进行分析"); return; }
+        if (!session) { alert("模型未就绪"); return; }
+
+        const tokens = getTokens(text);
+        if (tokens.length === 0) { updateUI(0); return; }
+
+        resultArea.style.display = 'block';
+        detectBtn.disabled = true;
+        detectBtn.textContent = '分析中...';
+
+        try {
+            const input = new ort.Tensor('int64', BigInt64Array.from(tokens.map(BigInt)), [1, tokens.length]);
+            const results = await session.run({ token_ids: input });
+            const score = results.score.data[0];
+            updateUI(score);
+        } catch (e) {
+            alert('推理出错: ' + e.message);
+        } finally {
+            detectBtn.disabled = false;
+            detectBtn.textContent = '开始分析';
+        }
+    }
+
+    function updateUI(score) {
+        const percentage = (score * 100).toFixed(1);
+        scoreText.innerText = percentage + "%";
+        gaugeFill.style.width = percentage + "%";
+        let color, verdict;
+        if (score > 0.7) {
+            color = "#2ecc71";
+            verdict = "✨ 文本表现出强烈的人类书写特征。";
+        } else if (score > 0.4) {
+            color = "#f1c40f";
+            verdict = "🤔 文本特征模棱两可，建议人工复核。";
+        } else {
+            color = "#e74c3c";
+            verdict = "🤖 文本表现出明显的 AI 生成特征。";
+        }
+        gaugeFill.style.backgroundColor = color;
+        verdictText.style.color = color;
+        verdictText.innerText = verdict;
+        resultArea.scrollIntoView({behavior: 'smooth'});
+    }
+</script>
+</body>
+</html>
