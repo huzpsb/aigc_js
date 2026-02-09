@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 文本检测器 - 纯本地预测</title>
-    <!--感谢Gemini老师：我根本不会写前端（笑）-->
-    <script src="infer.js"></script>
+    <title>AI 文本检测器 - ONNX WASM</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
         :root {
             --primary-color: #4a90e2;
@@ -127,6 +126,11 @@
             transform: scale(0.98);
         }
 
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         #result-area {
             margin-top: 2rem;
             display: none;
@@ -164,6 +168,13 @@
             margin-left: 10px;
         }
 
+        #status {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #999;
+            margin-top: 0.5rem;
+        }
+
         @media (max-width: 480px) {
             .container {
                 padding: 1rem;
@@ -181,7 +192,7 @@
     <header>
         <h1>AI 文本特征检测</h1>
         <p class="disclaimer">
-            基于本地模型分析。输入 200 字以上中文效果最佳。
+            基于本地模型分析（ONNX WASM 推理）。输入 200 字以上中文效果最佳。
         </p>
         <div class="additional-disclaimer">
             <strong>重要：</strong>
@@ -198,11 +209,12 @@
         <div class="stats">
             当前字数: <span id="charCount">0</span>
         </div>
-        <button onclick="handleDetect()">
-            开始分析
+        <button id="detectBtn" onclick="handleDetect()" disabled>
+            加载模型中...
             <span id="loading" class="loading-spinner">...</span>
         </button>
     </div>
+    <div id="status">正在加载 ONNX 模型...</div>
 
     <div id="result-area">
         <div class="score-label">人类创作概率: <span id="scoreText">0%</span></div>
@@ -220,27 +232,69 @@
     const gaugeFill = document.getElementById('gauge-fill');
     const scoreText = document.getElementById('scoreText');
     const verdictText = document.getElementById('verdictText');
+    const detectBtn = document.getElementById('detectBtn');
+    const statusEl = document.getElementById('status');
 
-    // 实时统计字数
     textarea.addEventListener('input', () => {
         charCount.innerText = textarea.value.length;
     });
 
-    function handleDetect() {
+    // Tokenizer
+    let TOKENS = null;
+    function getTokens(text) {
+        const ids = [];
+        for (let i = 0; i < text.length; i++) {
+            const c = text[i];
+            if (c >= "一" && c <= "龟") {
+                const idx = TOKENS.indexOf(c);
+                ids.push(idx === -1 ? 0 : idx + 1);
+            }
+        }
+        return ids;
+    }
+
+    // Load model
+    let session = null;
+    async function init() {
+        try {
+            const resp = await fetch('tokens.json');
+            TOKENS = await resp.json();
+            session = await ort.InferenceSession.create('model.onnx', {
+                executionProviders: ['wasm']
+            });
+            detectBtn.disabled = false;
+            detectBtn.textContent = '开始分析';
+            statusEl.textContent = '模型已就绪';
+            setTimeout(() => statusEl.style.display = 'none', 1500);
+        } catch (e) {
+            statusEl.textContent = '模型加载失败: ' + e.message;
+        }
+    }
+    init();
+
+    async function handleDetect() {
         const text = textarea.value.trim();
-        if (!text) {
-            alert("请输入一些文本再进行分析");
-            return;
-        }
-        if (typeof predict !== 'function') {
-            alert("模型未就绪");
-            return;
-        }
+        if (!text) { alert("请输入一些文本再进行分析"); return; }
+        if (!session) { alert("模型未就绪"); return; }
+
+        const tokens = getTokens(text);
+        if (tokens.length === 0) { updateUI(0); return; }
+
         resultArea.style.display = 'block';
-        setTimeout(() => {
-            const score = predict(text);
+        detectBtn.disabled = true;
+        detectBtn.textContent = '分析中...';
+
+        try {
+            const input = new ort.Tensor('int64', BigInt64Array.from(tokens.map(BigInt)), [1, tokens.length]);
+            const results = await session.run({ token_ids: input });
+            const score = results.score.data[0];
             updateUI(score);
-        }, 100);
+        } catch (e) {
+            alert('推理出错: ' + e.message);
+        } finally {
+            detectBtn.disabled = false;
+            detectBtn.textContent = '开始分析';
+        }
     }
 
     function updateUI(score) {
@@ -258,7 +312,6 @@
             color = "#e74c3c";
             verdict = "🤖 文本表现出明显的 AI 生成特征。";
         }
-
         gaugeFill.style.backgroundColor = color;
         verdictText.style.color = color;
         verdictText.innerText = verdict;
